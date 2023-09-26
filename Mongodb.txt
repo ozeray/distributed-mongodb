@@ -1,0 +1,92 @@
+How to build a replica set on Windows local machine:
+1. Download Mongodb and add C:\Program Files\MongoDB\Server\7.0\bin to PATH
+2. Download Mongosh and at its bin folder to PATH
+3. Create three folders (for each Mongodb instance we'll use these folders for config, logs and data storage):
+    D:\mongo\data1
+    D:\mongo\data2
+    D:\mongo\data3
+4. Inside each folder create two folders: logs and config (Do this for each instance)
+5. Inside each logs folder create an empty mongod.log file (Do this for each instance).
+6. Inside each config folder create a mongod.cfg file with contents set for three instances accordingly. E.g.:
+        storage:
+          dbPath: D:\mongo\data1\db
+
+        systemLog:
+          destination: file
+          logAppend: true
+          path:  D:\mongo\data1\logs\mongod.log
+
+        net:
+          port: 27017
+          bindIp: 127.0.0.1
+
+    Change paths and ports for each instance.
+
+7. Open a shell and run the first instance, which we'll set as primary:
+     mongod.exe --dbpath "D:\mongo\data1" --logpath "D:\mongo\data1\logs\mongod.log" --port 27017 --storageEngine=wiredTiger --replSet repld
+
+8. Open another shell and run mongosh --port 27017 to manage the instance.
+9. When you run show dbs, there will be an error: MongoServerError: node is not in primary or recovering state
+10. We'll assign it as a primary. Run the commands in order:
+    rsconf={_id:"repld", members:[{_id:0, host:"localhost:27017"}]}
+    rs.initiate(rsconf)
+
+    Done. Our primary node is ready.
+
+11. Now running show dbs will show all db's available in this instance.
+12. Open a shell and run the second instance, which we'll set as secondary:
+         mongod.exe --dbpath "D:\mongo\data2" --logpath "D:\mongo\data2\logs\mongod.log" --port 27018 --storageEngine=wiredTiger --replSet repld
+13. Open a shell and run the third instance, which we'll set as secondary:
+             mongod.exe --dbpath "D:\mongo\data3" --logpath "D:\mongo\data3\logs\mongod.log" --port 27018 --storageEngine=wiredTiger --replSet repld
+
+14. Inside the shell we opened on step 8, run:
+     rs.add("localhost:27018")
+     rs.add("localhost:27019")
+
+    Our secondary nodes are added into replica set.
+
+15. Now you can run rs.help() to see options and various commands to see replica details:
+        rs.status()
+        rs.config()
+        rs.hello()
+        rs.isMaster()
+
+16. Now insert some sample documents on primary node:
+        use ecom
+        db.test.insertOne({name:"Ahmet"})
+        db.test.insertOne({name:"Mehmet"},{writeConcern:{w:1, wtimeout:5000}})
+        db.test.insertOne({name:"Veli"},{writeConcern:"majority"})
+
+        show dbs
+        db.test.find() -> Will show our sample documents
+
+17. Open another shell and run mongosh --port 27018.
+        Inside the shell, run various commands to the status of our secondary node and verify the data is replicated:
+         rs.isMaster()
+         show dbs
+         use ecom
+         db.test.find() -> Will give error: MongoServerError: not primary and secondaryOk=false - consider using db.getMongo().setReadPref() or readPreference in the connection string
+         db.test.find().readPref("secondary") -> Will give the sample documents
+    Note: You can repeat this step for third node.
+
+18. When you connect to localhost:27017 in Mongodb Compass, you'll see the following in Connection info menu:
+        Stats
+        4 DBs
+        15 Collections
+
+        Hosts
+        localhost:27017
+        localhost:27018
+        localhost:27019
+
+        Cluster
+        Replica Set repld
+        3 Nodes
+
+        Edition
+        MongoDB 7.0.1 Community
+
+        :))
+
+19. Now you can test whether leader election works or not:
+        Kill the first instance and verify that the second instance becomes the primary.
