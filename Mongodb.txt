@@ -1,4 +1,4 @@
-How to build a replica set on Windows local machine:
+A. How to build a replica set on Windows local machine:
 1. Download Mongodb and add C:\Program Files\MongoDB\Server\7.0\bin to PATH
 2. Download Mongosh and at its bin folder to PATH
 3. Create three folders (for each Mongodb instance we'll use these folders for config, logs and data storage):
@@ -90,3 +90,38 @@ How to build a replica set on Windows local machine:
 
 19. Now you can test whether leader election works or not:
         Kill the first instance and verify that the second instance becomes the primary.
+
+B. Setting Up a Sharding Cluster:
+
+1. To start Mongo instances with sharding enabled:
+        mongod.exe --shardsvr --dbpath "D:\mongo\shard1" --logpath "D:\mongo\shard1\logs\mongod.log" --port 27017 --storageEngine=wiredTiger --replSet shrd1-rs
+        mongod.exe --shardsvr --dbpath "D:\mongo\shard2" --logpath "D:\mongo\shard2\logs\mongod.log" --port 27018 --storageEngine=wiredTiger --replSet shrd2-rs
+    Do the above steps in section A again to set up the replica sets for each sharding replica set.
+
+2. To set up config servers for our sharding cluster, we do the same steps above in section A with one difference: start Mongo config instances with --configsvr option:
+         mongod.exe --configsvr --dbpath "D:\mongo\config1" --logpath "D:\mongo\config1\logs\mongod.log" --port 27020 --storageEngine=wiredTiger --replSet config-rs
+
+3. Finally, to start mongos (router):
+        mongos --configdb config-rs/localhost:27020,localhost:27021,localhost:27022 --port 27019
+
+4. Add shards to mongos config:
+        sh.addShard("shrd1-rs/localhost:27017")
+        sh.addShard("shrd2-rs/localhost:27018")
+
+5. To simplify testing the sharding process, you may think of reducing the chunk size:
+        use config
+        db.settings.updateOne({ _id: "chunksize" },{ $set: { _id: "chunksize", value: 1 } },{ upsert: true })
+
+
+C. Indexes:
+1. To create pre-sorted index on a field:
+    db.movies.createIndex({"name":1})
+
+2. To shard the collection with range strategy:
+    sh.shardCollection("videodb.movies", {name:1})
+
+3. Create hashed index:
+    db.users.createIndex({_id: "hashed"})
+
+4. To shard the collection with hash strategy:
+    sh.shardCollection("videodb.users", {_id: "hashed"})
